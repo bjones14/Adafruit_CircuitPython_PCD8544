@@ -4,32 +4,28 @@
 # SPDX-License-Identifier: MIT
 
 """
-`adafruit_pcd8544`
+`micropython_pcd8544`
 ====================================================
 
 A display control library for Nokia 5110 PCD8544 monochrome displays
 
-* Author(s): ladyada
+* Author(s): ladyada, bjones14
 
 Implementation Notes
 --------------------
+
+This library is a fork of https://github.com/adafruit/Adafruit_CircuitPython_PCD8544.git
+that is intended to be utilized with micropython and its libraries.
 
 **Hardware:**
 
 * `Nokia 5110 PCD8544 Display <https://www.adafruit.com/product/338>`_
 
-**Software and Dependencies:**
-
-* Adafruit CircuitPython firmware for the supported boards:
-  https://github.com/adafruit/circuitpython/releases
-
-* Adafruit's Bus Device library: https://github.com/adafruit/Adafruit_CircuitPython_BusDevice
-
 """
 
 import time
 from micropython import const
-from adafruit_bus_device import spi_device
+from machine import Pin, SPI
 
 try:
     import framebuf
@@ -37,7 +33,7 @@ except ImportError:
     import adafruit_framebuf as framebuf
 
 __version__ = "0.0.0-auto.0"
-__repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_PCD8544.git"
+__repo__ = "https://github.com/bjones14/Adafruit_CircuitPython_PCD8544.git"
 
 _LCDWIDTH = const(84)
 _LCDHEIGHT = const(48)
@@ -67,20 +63,24 @@ class PCD8544(framebuf.FrameBuffer):
         spi,
         dc_pin,
         cs_pin,
+        baudrate=1000000,
+        sck_pin=14,
+        mosi_pin=13,
+        miso_pin=12,
         reset_pin=None,
         *,
         contrast=80,
-        bias=4,
-        baudrate=1000000
+        bias=4
     ):
-        self._dc_pin = dc_pin
-        dc_pin.switch_to_output(value=False)
+        self._dc_pin = Pin(dc_pin, Pin.out)
 
-        self.spi_device = spi_device.SPIDevice(spi, cs_pin, baudrate=baudrate)
+        self.spi_device = SPI.init(baudrate=baudrate, 
+                                   sck=Pin(sck_pin), 
+                                   mosi=Pin(mosi_pin),
+                                   miso=Pin(miso_pin))
 
-        self._reset_pin = reset_pin
         if reset_pin:
-            reset_pin.switch_to_output(value=True)
+            self._reset_pin = Pin(reset_pin, Pin.out)
 
         self.buffer = bytearray((_LCDHEIGHT // 8) * _LCDWIDTH)
         super().__init__(self.buffer, _LCDWIDTH, _LCDHEIGHT)
@@ -98,14 +98,14 @@ class PCD8544(framebuf.FrameBuffer):
         """Reset the display"""
         if self._reset_pin:
             # Toggle RST low to reset.
-            self._reset_pin.value = False
+            self._reset_pin.value(0)
             time.sleep(0.5)
-            self._reset_pin.value = True
+            self._reset_pin.value(1)
             time.sleep(0.5)
 
     def write_cmd(self, cmd):
         """Send a command to the SPI device"""
-        self._dc_pin.value = 0
+        self._dc_pin.value(0)
         with self.spi_device as spi:
             spi.write(bytearray([cmd]))  # pylint: disable=no-member
 
@@ -122,7 +122,7 @@ class PCD8544(framebuf.FrameBuffer):
         """write out the frame buffer via SPI"""
         self.write_cmd(_PCD8544_SETYADDR)
         self.write_cmd(_PCD8544_SETXADDR)
-        self._dc_pin.value = True
+        self._dc_pin.value(1)
         with self.spi_device as spi:
             spi.write(self.buffer)  # pylint: disable=no-member
 
